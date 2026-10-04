@@ -1,0 +1,26 @@
+{
+  "seed": 0,
+  "n": 20,
+  "ids": [
+    "RB-NQ_claude_-1932118074616697613_P-GranularityMismatch_LOW_9ee7fafe_1209",
+    "RB-NQ_claude_6608141013475408306_P-GranularityMismatch_MEDIUM_ff498a26_1074",
+    "RB-NQ_deepseek_-1932118074616697613_P-MissingInfo_HIGH_aa14814d_2139",
+    "RB-NQ_deepseek_-4173780285858774112_P-MissingInfo_MEDIUM_e165558d_1694",
+    "RB-NQ_deepseek_-5061926765893337070_P-EpistemicMismatch_LOW_d44cff73_1913",
+    "RB-NQ_deepseek_3581703127157842174_P-MissingInfo_LOW_1ade5455_1710",
+    "RB-NQ_deepseek_3616632103136384232_P-Ambiguity_HIGH_550e6c18_2177",
+    "RB-NQ_deepseek_700604097171850168_P-Contradiction_HIGH_bb32b0fd_1449",
+    "RB-NQ_gpt_-3908725222525421557_P-Ambiguity_LOW_8cb7e34b_2901",
+    "RB-NQ_gpt_-6737486169677690795_P-EpistemicMismatch_HIGH_d832b176_3222",
+    "RB-NQ_gpt_-7729388021714760854_P-FalsePremise_LOW_6bb67dc0_3093",
+    "RB-NQ_gpt_-8964430330382911432_P-FalsePremise_HIGH_d357b8c1_2964",
+    "RB-NQ_gpt_-9097447514182117784_P-Ambiguity_LOW_f0f62717_2927",
+    "RB-NQ_gpt_4433669964771756966_P-Contradiction_LOW_125182f9_3238",
+    "RB-NQ_gpt_6605227747829720945_P-EpistemicMismatch_MEDIUM_bb8a041b_3164",
+    "RB-NQ_gpt_6605227747829720945_P-GranularityMismatch_HIGH_35aeae76_3163",
+    "RB-NQ_nova_-4879672631592131847_P-FalsePremise_MEDIUM_175f14a9_4056",
+    "RB-NQ_nova_-918571312056093750_P-Contradiction_MEDIUM_09eb09dd_4533",
+    "RB-NQ_nova_1803248910342766083_P-Ambiguity_MEDIUM_727e92ac_3684",
+    "RB-NQ_nova_7363398765815807969_P-Ambiguity_HIGH_6ef40407_3773"
+  ]
+}

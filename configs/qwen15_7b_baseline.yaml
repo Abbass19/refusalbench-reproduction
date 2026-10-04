@@ -1,0 +1,24 @@
+# Baseline: Qwen1.5-7B-Chat on RefusalBench-NQ, free Colab T4.
+# The paper used vLLM on A100s (temperature 1.0, top_p 1.0 for open models).
+run_name: qwen15_7b_baseline
+
+target:
+  provider: hf
+  model: Qwen/Qwen1.5-7B-Chat
+  precision: 4bit          # 4bit | 8bit | fp16 (fp16 will not fit a T4)
+  temperature: 1.0         # paper: default 1.0
+  top_p: 1.0               # paper: default 1.0
+  max_new_tokens: 256      # not stated in the paper; our choice
+  batch_size: 8
+  seed: 0
+
+judge:
+  provider: gemini
+  model: gemini-3.5-flash-lite   # substitute for the paper's Claude Sonnet 4
+  temperature: 0.0
+  min_interval_s: 0.5
+  max_attempts: 6
+
+# generation is run in these nested stages, then everything remaining
+stages: [10, 100]
+handcheck_size: 30

@@ -1,0 +1,7 @@
+transformers>=4.40
+accelerate>=0.30
+bitsandbytes>=0.43
+datasets
+python-dotenv
+google-genai
+pyyaml
