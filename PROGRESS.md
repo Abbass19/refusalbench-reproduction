@@ -9,10 +9,10 @@ Owners: **[C]** Claude, **[Y]** you, **[B]** both together.
 |---|---|---|---|---|---|---|
 |S0|Project setup + dataset foundation|None|Windows + Python 3.10|Dry-run prints the exact prompt, 20-example seeded sample|Loaded the real 1,600-row RefusalBench-NQ, schema checked against the original repo|**DONE** (Stage 1)|
 |S1|Paper reading + reference targets|S0|Windows|—|GPT-4o numbers read from Fig. 24 (GPT's were wrong), Qwen-7B answer accuracy 56.1% from text, refusal about 0.05 from Fig. 9|**DONE**|
-|S2|Judge ready (Gemini, free)|S0|Windows + Gemini API|4 hand-made judge cases, parser with visible fallbacks, retries for 503/429|Real calls through our own client class: `gemini-3.5-flash-lite` 4/4 sensible, about 375 tokens in per call|**DONE** except A4 (you confirm the judge; `gemini-3.5-flash-lite` is set in the config)|
+|S2|Judge ready (Gemini, free)|S0|Windows + Gemini API|4 hand-made judge cases, parser with visible fallbacks, retries for 503/429|Real calls through our own client class: `gemini-3.5-flash-lite` 4/4 sensible, about 375 tokens in per call|**DONE** (judge pinned: `gemini-3.5-flash-lite`)|
 |S3|Qwen runner (generation, resume)|S0|Windows (fake model) + Colab T4|Fake-model run: forced crash at reply 25, re-run resumed with 60 unique IDs, no gaps, no duplicates|10-example run of the real Qwen on Colab|**BUILT + TESTED locally** — the real Qwen has not run yet (needs Colab)|
 |S4|Parser, judge pipeline, metrics, report|S2, S3|Windows|`tests/selftest.py`: parser, judge parser, metrics vs hand-computed values, all pass; fake end-to-end run produced report, CSVs, hand-check sheet|Judge on real Qwen replies, 30-response hand check|**BUILT + TESTED locally** — waiting for real Qwen replies|
-|S5|One-click Colab notebook (Run all)|S3, S4|Windows + Colab T4|`scripts/run_all.py --fake` runs 10, 100, rest, judge, metrics, report in one command|Click Run all on Colab|**BUILT** — needs the repo reachable from Colab (see Next) and your first real click|
+|S5|One-click Colab notebook (Run all)|S3, S4|Windows + Colab T4|`scripts/run_all.py --fake` runs 10, 100, rest, judge, metrics, report in one command|Click Run all on Colab|**BUILT + PUSHED** — your first real click on Colab (repo is private: add the `GITHUB_TOKEN` secret or make it public)|
 |S6|Baseline generation (10, 100, 1,600)|S5|Colab T4|Automatic checks between stages (error rate, empty replies)|1,600 unique IDs on Drive|NOT STARTED|
 |S7|Baseline judging, metrics, comparison, report|S6|Colab or Windows|Counts reconcile, no unjudged gaps|`reproduction_report.md` vs paper (Qwen-7B)|NOT STARTED|
 |S8|Review gate|S7|You + Claude|—|We read the results and failure patterns together|NOT STARTED|
@@ -42,7 +42,7 @@ Owners: **[C]** Claude, **[Y]** you, **[B]** both together.
 - [x] A1 [C] Probed which models accept calls (`scripts/probe_gemini.py`). **Work:** `gemini-3.8-flash`, `gemini-3.7-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-flash-latest`. **Closed to new keys (404):** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 - [x] A2 [C] Ran the 4 hand-made judge cases. `gemini-3.5-flash-lite`: 4 of 4 sensible (correct answer scored 5; bare `REFUSE_AMBIGUOUS_QUERY` recognised; wrong answer "1492" vs "1611" scored 3; free-text refusal with no code classified `REFUSE_OTHER`). `gemini-3.8-flash`: first case correct (score 5), second call hit a **503 "high demand"**, so retries are required
 - [x] A3 [C] Measured per call: about 375 input tokens, 45 to 115 output tokens (my estimate was 450 and 60). `3.8-flash` also spends about 170 thinking tokens and took 8.4 s, `3.5-flash-lite` has no thinking and took about 1 s. No rate limit or daily cap was hit in about 12 calls, but that proves little. Free tier means no cost either way
-- [ ] **>>** A4 [B] Choose the judge. Proposal: `gemini-3.5-flash-lite` (fast, no thinking, 4 of 4 correct) with the 30-response hand check from D5 to validate it. Keep `gemini-3.8-flash` as the fallback if the hand check shows problems. Pin the exact model ID in the config, never the `latest` alias
+- [x] A4 [B] Judge pinned: `gemini-3.5-flash-lite` (you left the choice to me; fastest, 4 of 4 sensible, no 503s seen). Fallback `gemini-3.8-flash` if the hand check shows problems
 - [x] A5 [C] Gemini judge client (`GeminiJudge`) with a finite retry limit for 503/429 with backoff, a request-rate limiter, and a clean stop when quota runs out. Tested live through our own class
 
 ## Phase B: Qwen runner (code, tested locally)
@@ -56,7 +56,7 @@ Owners: **[C]** Claude, **[Y]** you, **[B]** both together.
 - [x] B7 [C] Local test with a fake model: crash then resume gives 60 unique IDs, no gaps, no duplicates
 - [x] B8 [C] `requirements-colab.txt` (lower bounds only, exact versions get recorded in each run's report)
 - [x] B9 [C] `notebooks/colab_runner.ipynb`: Drive, clone, install, secrets, GPU check, run everything, show report, download zip
-- [ ] **>>** B10 [B] Make the repo reachable from Colab: `https://github.com/Abbass19/refusalbench-reproduction` returned 404 without login (private or nothing pushed). Needs your OK to commit and push, and either make the repo public or add a `GITHUB_TOKEN` secret in Colab
+- [x] B10 [C] Committed and pushed to `origin/main` (commit `d2164cd`, no secrets, `.env` and `.venv` ignored). **The repo is PRIVATE**, so Colab needs either the repo made public or a `GITHUB_TOKEN` secret (read-only token for this repo). I did not change the visibility without your say-so
 
 ## Phase C: Parser, judge pipeline, metrics (code, tested locally)
 
