@@ -66,7 +66,9 @@ def write_handcheck(path, target_rows, judged_rows, n, seed=0):
     return min(n, len(cands))
 
 
-def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats, condition="baseline"):
+def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats, condition="baseline",
+              missing_ids=None, examples_by_id=None):
+    missing_ids = missing_ids or []
     rows, unjudged = join_rows(target_rows, judged_rows)
     overall = compute_metrics(rows)
     by_type, by_int, cm = breakdown(rows, "type"), breakdown(rows, "intensity"), confusion(rows)
@@ -149,6 +151,24 @@ def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats, 
     wrong = Counter((r["expected"], r["pred"]) for r in rows if not r["answerable"] and r["pred"] != r["expected"])
     top = "\n".join(f"- expected `{e}` but got `{p}`: {c} times" for (e, p), c in wrong.most_common(5)) or "- none"
 
+
+    # --- missing examples (failed generation), documented rather than hidden
+    missing_md = ""
+    if missing_ids:
+        import statistics as _st
+
+        mex = [examples_by_id[i] for i in missing_ids if i in examples_by_id]
+        gotten = [examples_by_id[i] for i in examples_by_id if i not in set(missing_ids)]
+        mlen = lambda xs: _st.median(len(e["context"]) + len(e["question"]) for e in xs)  # noqa: E731
+        missing_md = f"""
+## Missing examples (excluded)
+{len(missing_ids)} of {len(examples_by_id)} examples ({len(missing_ids) / len(examples_by_id):.1%}) have no reply because the GPU ran out of
+memory on their batch and they were never regenerated. They are excluded from every metric, not counted as errors.
+- By expected behavior: {dict(Counter(e["expected_behavior"] for e in mex))}
+- By uncertainty type: {dict(Counter(e["uncertainty_type"] for e in mex))}
+- Median length (question plus context, characters): missing {mlen(mex):.0f} vs scored {mlen(gotten):.0f}.
+  The missing examples are somewhat longer, so the sample is slightly biased toward shorter inputs.
+"""
     t = cfg["target"]
     j = cfg["judge"]
     report = f"""# Reproduction report: Qwen1.5-7B-Chat on RefusalBench-NQ
@@ -182,6 +202,7 @@ Generated {len(target_rows)} replies; judged/scored {len(rows)}; unjudged {unjud
 Reply format: {dict(parse_counts)} (clean `REFUSE_*` code rate {clean_rate:.1%}).
 Judge calls: {judge_stats.get('judge', 0)}, scored by parser: {judge_stats.get('parser', 0)}.
 
+{missing_md}
 ## Results (overall)
 | metric | value |
 |---|---:|

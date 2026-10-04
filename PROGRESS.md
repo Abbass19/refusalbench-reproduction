@@ -85,6 +85,8 @@ Everything below runs by itself when you click Run all, except D5 and D12.
 - [ ] D11 [auto] `reproduction_report.md` generated
 - [ ] D12 [B] **GATE: review the baseline results together. No novelty work until this is done**
 
+**Baseline data check (from `Benchmark-Reproduction-Data/qwen15_7b_baseline.zip`, first Colab run):** generation is **1,560 of 1,600 done**, valid and duplicate-free (config matches: Qwen1.5-7B-Chat, 4-bit, temperature 1.0, top_p 1.0, max 256 tokens, prompt hash `c0008c7504b3`). **40 examples failed with CUDA out-of-memory** in batches of 8 and were never retried; the run stopped at the missing-IDs check before judging. They are ordinary examples (longest 1,852 characters, the dataset maximum is 2,012 and one of those succeeded), so the one-by-one retry in the pushed fix should recover them. No judging, metrics or report yet. Reply format: 568 clean `REFUSE_*` (36%), 991 free text with no code (64%), 1 multi-code, 0 empty, so the judge will handle about 1,000 replies, more than the earlier 804 estimate. **Action: re-run Cell 1 on the first account** (pulls the fix, retries the 40, judges, computes metrics, writes the report). Do not redo the run.
+
 ## Phase E: Novelty pass: category-first selective refusal (Obsidian note 9)
 
 Three conditions on the same stratified 800, same Qwen, same settings, same judge: **baseline**, **format-only control**, **category-first**.
@@ -102,7 +104,7 @@ The code is built (E5 to E11, E12b, E15). Still open: E12 prompt pilots on the d
 - [x] E10 [C] Judging uses the extracted reply (code scored by parser, answer text to the judge), unchanged otherwise **Done:** Judging scores the extracted reply and records `effective_reply`, `evidence_state`, `flags` for non-baseline runs.
 - [x] E11 [C] Tests: `FINAL` and `EVIDENCE_STATE` parsing, malformed output, state-vs-final conflicts, fake end-to-end for both conditions **Done:** `tests/selftest_conditions.py` passes (it caught a markdown-bold parsing bug in `FINAL:`, fixed). Fake runs of all three conditions on the real 800 subset worked, crash-safe.
 - [ ] E12 [C] Pilot on the **dev pool (the other 800)**, 30 examples per prompt, at most 3 prompt revisions, each recorded. Then **freeze the prompts** before touching the 800
-- [x] E12b [C] `notebooks/colab_novelty.ipynb` built: setup, format-only run, category-first run, comparison (all resumable). Do not run before the gate, approval and prompt freeze.
+- [x] E12b [C] `notebooks/colab_novelty.ipynb` built: setup, format-only run, category-first run, comparison (all resumable). Do not run before the gate, approval and prompt freeze. **Update:** you chose to start the novelty sweep early on a second T4 (other Google account). Code pushed in `dcc878d` (also adds the out-of-memory fallback and catch-up passes). The prompts were not piloted on the real Qwen, so the first 10 sample replies of each condition must be checked by eye; results are provisional until the gate, the professor's approval and a prompt review.
 - [ ] E13 [Y] Run the format-only condition on the 800 on Colab (about 1.5 h on the T4, resumable)
 - [ ] E14 [Y] Run the category-first condition on the 800 (about 1.5 to 2 h)
 - [x] E15 [C] `scripts/compare_conditions.py` + `src/compare.py`: baseline vs format-only vs category-first on identical examples, paired cluster bootstrap over the ~100 source questions, 95% intervals. **Done:** tested on fake runs (numbers meaningless, intervals realistically wide).

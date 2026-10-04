@@ -67,30 +67,42 @@ def run_generation(examples, client, out_path, errors_path, target_cfg, log=prin
 
     def free_gpu():
         try:
+            import gc
+
             import torch
 
+            gc.collect()
             torch.cuda.empty_cache()
         except Exception:
             pass
 
     for i in range(0, len(todo), bs):
         batch = todo[i : i + bs]
+        # Retries happen OUTSIDE the except blocks: inside them the exception's traceback still holds the failed
+        # attempt's GPU tensors, so memory cannot be freed and every retry fails as well. Only strings are kept.
+        texts, fail_name = None, None
         try:
             texts = client.generate_batch([prompt_fn(e) for e in batch])
         except Exception as err:  # KeyboardInterrupt is deliberately not caught
-            log(f"  batch failed ({type(err).__name__}); retrying its {len(batch)} examples one by one")
+            fail_name = type(err).__name__
+        if fail_name:
+            log(f"  batch failed ({fail_name}); retrying its {len(batch)} examples one by one")
             free_gpu()
             ok_batch, texts = [], []
             for e in batch:
+                single, name, msg = None, None, None
                 try:
-                    texts.append(client.generate_batch([prompt_fn(e)])[0])
-                    ok_batch.append(e)
+                    single = client.generate_batch([prompt_fn(e)])[0]
                 except Exception as err2:
+                    name, msg = type(err2).__name__, str(err2)[:500]
+                if name:
                     free_gpu()
                     append_jsonl(errors_path, [{"example_id": e["id"], "request_status": "error",
-                                                "error_type": type(err2).__name__,
-                                                "error_message": str(err2)[:500], "timestamp": now()}])
-                    log(f"  one example failed even alone ({type(err2).__name__}); it is retried on the next pass")
+                                                "error_type": name, "error_message": msg, "timestamp": now()}])
+                    log(f"  one example failed even alone ({name}); it is retried on the next pass")
+                else:
+                    ok_batch.append(e)
+                    texts.append(single)
             batch = ok_batch
             if not batch:
                 consecutive_fail += 1

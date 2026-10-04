@@ -56,16 +56,27 @@ class HFClient:
         gen = out[:, enc["input_ids"].shape[1]:]
         return self.tok.batch_decode(gen, skip_special_tokens=True)
 
+    def free_gpu(self):
+        import gc
+
+        gc.collect()
+        self.torch.cuda.empty_cache()
+
     def generate_batch(self, prompts):
-        """Halves the batch on CUDA out-of-memory, down to 1."""
+        """Halves the batch on CUDA out-of-memory, down to 1.
+
+        The retry must happen OUTSIDE the except block: while it is active the exception's traceback still
+        references the failed attempt's tensors, so the memory cannot be freed and every retry fails too.
+        """
         try:
             return self._generate(prompts)
         except self.torch.cuda.OutOfMemoryError:
-            self.torch.cuda.empty_cache()
-            if len(prompts) == 1:
-                raise
-            mid = len(prompts) // 2
-            return self.generate_batch(prompts[:mid]) + self.generate_batch(prompts[mid:])
+            pass
+        self.free_gpu()
+        if len(prompts) == 1:
+            return self._generate(prompts)  # last attempt with a clean GPU, a failure here is a real error
+        mid = len(prompts) // 2
+        return self.generate_batch(prompts[:mid]) + self.generate_batch(prompts[mid:])
 
 
 # ---------------------------------------------------------------- target: fake (tests only)

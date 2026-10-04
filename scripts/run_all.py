@@ -6,6 +6,11 @@ Order: load data -> generate 10 -> check -> generate 100 -> check -> generate th
 Usage (Colab does this for you):  python scripts/run_all.py --out /content/drive/MyDrive/refusalbench-results
 """
 
+import os
+
+# less GPU memory fragmentation (must be set before torch is imported)
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import argparse
 import copy
 import hashlib
@@ -35,6 +40,8 @@ def main():
     ap.add_argument("--fake", action="store_true", help="TEST ONLY: fake target and judge, no GPU, no API")
     ap.add_argument("--dev-subset", type=int, default=0, help="TEST ONLY: use a small stratified subset")
     ap.add_argument("--skip-judge", action="store_true")
+    ap.add_argument("--accept-partial", action="store_true",
+                    help="skip generation, score the replies that exist and document the missing examples")
     ap.add_argument("--subset-file", default=None, help="JSON with an ids list, e.g. data/novelty_sample_ids.json")
     args = ap.parse_args()
 
@@ -110,7 +117,7 @@ def main():
     labels = [f"stage {s}" for s in cfg["stages"]] + ["all remaining"]
 
     client = None
-    for label, ids in zip(labels, cumulative):
+    for label, ids in ([] if args.accept_partial else zip(labels, cumulative)):
         have = {r["example_id"] for r in read_jsonl(out_path)}
         todo = [i for i in ids if i not in have]
         if todo and client is None:
@@ -139,7 +146,7 @@ def main():
             log(f"    speed {stats['sec_per_example']:.1f}s per example, about {eta:.0f} min left for the rest")
 
     # catch-up passes for examples that failed (for example a GPU out-of-memory), then verify completeness
-    for attempt in (1, 2):
+    for attempt in (() if args.accept_partial else (1, 2)):
         have = {r["example_id"] for r in read_jsonl(out_path)}
         missing = [i for i in by_id if i not in have]
         if not missing:
@@ -154,10 +161,15 @@ def main():
     ids_done = {r["example_id"] for r in target_rows}
     if len(ids_done) != len(target_rows):
         raise SystemExit("target_outputs.jsonl contains duplicate IDs, this should never happen. Stopping.")
-    if len(ids_done) != len(by_id):
+    missing_ids = sorted(set(by_id) - ids_done)
+    if missing_ids and args.accept_partial:
+        log(f"ACCEPTING PARTIAL DATA: {len(ids_done)} of {len(by_id)} examples; "
+            f"{len(missing_ids)} failed with out-of-memory and are excluded (documented in the report)")
+    elif missing_ids:
         raise SystemExit(f"{len(by_id) - len(ids_done)} examples still failed after the catch-up passes "
                          f"(see {err_path}). Progress is saved: run this cell again to retry them.")
-    log(f"generation complete: {len(ids_done)} unique IDs, no gaps, no duplicates")
+    log(f"generation complete: {len(ids_done)} unique IDs, no duplicates"
+        + (f", {len(missing_ids)} missing (excluded)" if missing_ids else ", no gaps"))
 
     # ---- 4. judge (parse first)
     judged_path = os.path.join(run_dir, "judged_outputs.jsonl")
@@ -178,7 +190,8 @@ def main():
 
     # ---- 5. metrics, report, hand-check sheet
     judged_rows = read_jsonl(judged_path)
-    out, assessment = write_all(run_dir, cfg, target_rows, judged_rows, [], judge_stats, condition=condition)
+    out, assessment = write_all(run_dir, cfg, target_rows, judged_rows, [], judge_stats, condition=condition,
+                                missing_ids=missing_ids, examples_by_id=by_id)
     o = out["overall"]
     log("=== DONE")
     log(f"scored {o['n_scored']}/{len(target_rows)} | answer acc {o['answer_accuracy']} | "
