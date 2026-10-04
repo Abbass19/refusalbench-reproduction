@@ -23,6 +23,7 @@ def adapt_row(row: dict) -> dict:
         raise ValueError(f"Unknown expected_rag_behavior: {expected!r} (id={row['id']})")
     return {
         "id": row["id"],
+        "source_id": row["source_id"],
         "question": row["perturbed_query"],
         "context": row["perturbed_context"],
         "expected_behavior": expected,

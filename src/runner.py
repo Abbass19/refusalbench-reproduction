@@ -8,6 +8,7 @@ import os
 import time
 
 from .judge import build_judge_prompt, parse_judge_response
+from .conditions import extract_effective
 from .parser import parse_reply
 from .prompt_builder import PROMPT_TEMPLATE, build_prompt
 
@@ -45,7 +46,7 @@ def append_jsonl(path, rows):
 
 
 # ------------------------------------------------------------------ generation
-def run_generation(examples, client, out_path, errors_path, target_cfg, log=print):
+def run_generation(examples, client, out_path, errors_path, target_cfg, log=print, prompt_fn=build_prompt):
     """Generate for every example not yet done. Returns stats for this call."""
     done = {r["example_id"] for r in read_jsonl(out_path) if r.get("request_status") == "ok"}
     todo = [e for e in examples if e["id"] not in done]
@@ -53,33 +54,51 @@ def run_generation(examples, client, out_path, errors_path, target_cfg, log=prin
     gen_cfg = {k: target_cfg[k] for k in ("temperature", "top_p", "max_new_tokens", "seed", "precision")}
     t0, n_ok, consecutive_fail = time.time(), 0, 0
 
+    def make_row(e, t):
+        return {
+            "example_id": e["id"], "question": e["question"], "context": e["context"],
+            "reference_answers": e["reference_answers"], "expected_behavior": e["expected_behavior"],
+            "uncertainty_type": e["uncertainty_type"], "intensity": e["intensity"],
+            "provider": target_cfg["provider"], "model": target_cfg["model"],
+            "generation_config": gen_cfg, "prompt_hash": prompt_hash(),
+            "raw_response": t, "request_status": "ok", "timestamp": now(),
+            **({"condition": target_cfg["condition"]} if target_cfg.get("condition", "baseline") != "baseline" else {}),
+        }
+
+    def free_gpu():
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+
     for i in range(0, len(todo), bs):
         batch = todo[i : i + bs]
         try:
-            texts = client.generate_batch([build_prompt(e) for e in batch])
-        except Exception as e:  # KeyboardInterrupt is deliberately not caught
-            consecutive_fail += 1
-            append_jsonl(
-                errors_path,
-                [{"example_id": e_["id"], "request_status": "error", "error_type": type(e).__name__,
-                  "error_message": str(e)[:500], "timestamp": now()} for e_ in batch],
-            )
-            log(f"  batch failed ({type(e).__name__}); will be retried on the next run")
-            if consecutive_fail >= 3:
-                raise RuntimeError("3 batches in a row failed, stopping. Progress is saved; fix and re-run.")
-            continue
+            texts = client.generate_batch([prompt_fn(e) for e in batch])
+        except Exception as err:  # KeyboardInterrupt is deliberately not caught
+            log(f"  batch failed ({type(err).__name__}); retrying its {len(batch)} examples one by one")
+            free_gpu()
+            ok_batch, texts = [], []
+            for e in batch:
+                try:
+                    texts.append(client.generate_batch([prompt_fn(e)])[0])
+                    ok_batch.append(e)
+                except Exception as err2:
+                    free_gpu()
+                    append_jsonl(errors_path, [{"example_id": e["id"], "request_status": "error",
+                                                "error_type": type(err2).__name__,
+                                                "error_message": str(err2)[:500], "timestamp": now()}])
+                    log(f"  one example failed even alone ({type(err2).__name__}); it is retried on the next pass")
+            batch = ok_batch
+            if not batch:
+                consecutive_fail += 1
+                if consecutive_fail >= 3:
+                    raise RuntimeError("3 batches in a row failed, stopping. Progress is saved; fix and re-run.")
+                continue
         consecutive_fail = 0
-        append_jsonl(
-            out_path,
-            [{
-                "example_id": e["id"], "question": e["question"], "context": e["context"],
-                "reference_answers": e["reference_answers"], "expected_behavior": e["expected_behavior"],
-                "uncertainty_type": e["uncertainty_type"], "intensity": e["intensity"],
-                "provider": target_cfg["provider"], "model": target_cfg["model"],
-                "generation_config": gen_cfg, "prompt_hash": prompt_hash(),
-                "raw_response": t, "request_status": "ok", "timestamp": now(),
-            } for e, t in zip(batch, texts)],
-        )
+        append_jsonl(out_path, [make_row(e, t) for e, t in zip(batch, texts)])
         n_ok += len(batch)
         el = time.time() - t0
         log(f"  generated {n_ok}/{len(todo)} this call ({el / n_ok:.1f}s per example)")
@@ -89,7 +108,7 @@ def run_generation(examples, client, out_path, errors_path, target_cfg, log=prin
 
 
 # ------------------------------------------------------------------ judging
-def run_judging(target_rows, judge, judge_cfg, out_path, log=print):
+def run_judging(target_rows, judge, judge_cfg, out_path, log=print, condition="baseline"):
     """Parse first; only unclear replies go to the judge. Returns stats. Stops cleanly on quota."""
     from .model_client import QuotaExhausted
 
@@ -103,7 +122,9 @@ def run_judging(target_rows, judge, judge_cfg, out_path, log=print):
     for r in target_rows:
         if r["example_id"] in done:
             continue
-        status, code = parse_reply(r["raw_response"])
+        eff = extract_effective(condition, r["raw_response"])
+        reply = eff["effective"]
+        status, code = parse_reply(reply)
         row = {"example_id": r["example_id"], "parse_status": status, "judge_model": None,
                "judge_raw": None, "explanation": "", "quality_score": None, "timestamp": now()}
         if status == "clean_code":
@@ -115,7 +136,7 @@ def run_judging(target_rows, judge, judge_cfg, out_path, log=print):
         else:
             try:
                 text, usage = judge.generate(
-                    build_judge_prompt(r["question"], r["raw_response"], r["reference_answers"]))
+                    build_judge_prompt(r["question"], reply, r["reference_answers"]))
             except QuotaExhausted as e:
                 log(f"  judge stopped: {e}. Progress saved, re-run later to continue.")
                 stats["stopped_on_quota"] = True
@@ -126,6 +147,8 @@ def run_judging(target_rows, judge, judge_cfg, out_path, log=print):
             stats["judge"] += 1
             stats["tokens_in"] += usage.get("tokens_in") or 0
             stats["tokens_out"] += usage.get("tokens_out") or 0
+        if condition != "baseline":
+            row.update(effective_reply=reply, evidence_state=eff["state"], flags=eff["flags"])
         append_jsonl(out_path, [row])
         if (stats["parser"] + stats["judge"] + stats["empty"]) % 25 == 0:
             log(f"  judged {stats['parser'] + stats['judge'] + stats['empty']} "

@@ -1,0 +1,26 @@
+# Novelty experiment, condition 2 of 3: FORMAT-ONLY CONTROL.
+# Same prompt as the baseline plus one instruction to end with a FINAL line. No evidence-state step.
+# Everything except `condition`, `run_name` and `subset_file` is identical to the baseline config.
+run_name: qwen15_7b_format_only
+subset_file: data/novelty_sample_ids.json
+
+target:
+  provider: hf
+  model: Qwen/Qwen1.5-7B-Chat
+  condition: format_only
+  precision: 4bit
+  temperature: 1.0
+  top_p: 1.0
+  max_new_tokens: 256
+  batch_size: 8
+  seed: 0
+
+judge:
+  provider: gemini
+  model: gemini-3.5-flash-lite
+  temperature: 0.0
+  min_interval_s: 0.5
+  max_attempts: 6
+
+stages: [10, 100]
+handcheck_size: 30

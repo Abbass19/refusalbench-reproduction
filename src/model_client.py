@@ -84,6 +84,15 @@ class FakeTarget:
             if crash_after and self.calls > crash_after:
                 raise KeyboardInterrupt("simulated crash")
             h = sum(map(ord, p)) % 4
+            if "EVIDENCE_STATE" in p:
+                st = ["CLEAR", "CONTRADICTORY", "MISSING_INFORMATION", "AMBIGUOUS"][h]
+                fin = "The answer is 1611." if st == "CLEAR" else "REFUSE_OTHER"
+                out.append(f"EVIDENCE_STATE: {st}\nFINAL: {fin}")
+                continue
+            if "FINAL:" in p:
+                out.append("Reasoning...\nFINAL: " + ["REFUSE_INFO_MISSING_IN_CONTEXT", "The answer is 1611.",
+                           "REFUSE_CONTRADICTORY_CONTEXT", "I cannot answer: unclear."][h])
+                continue
             out.append(
                 [
                     "REFUSE_INFO_MISSING_IN_CONTEXT",

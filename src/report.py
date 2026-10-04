@@ -66,12 +66,15 @@ def write_handcheck(path, target_rows, judged_rows, n, seed=0):
     return min(n, len(cands))
 
 
-def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats):
+def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats, condition="baseline"):
     rows, unjudged = join_rows(target_rows, judged_rows)
     overall = compute_metrics(rows)
     by_type, by_int, cm = breakdown(rows, "type"), breakdown(rows, "intensity"), confusion(rows)
 
-    parse_counts = Counter(parse_reply(r["raw_response"])[0] for r in target_rows)
+    from .conditions import extract_effective
+
+    parse_counts = Counter(parse_reply(extract_effective(condition, r["raw_response"])["effective"])[0]
+                           for r in target_rows)
     n_t = len(target_rows) or 1
     clean_rate = parse_counts["clean_code"] / n_t
     env = env_info()
@@ -87,6 +90,40 @@ def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats):
     write_confusion_csv(os.path.join(run_dir, "confusion_matrix.csv"), cm)
     n_hand = write_handcheck(os.path.join(run_dir, "handcheck_sheet.csv"), target_rows, judged_rows,
                              cfg.get("handcheck_size", 30))
+
+    if condition != "baseline":
+        flags = Counter(f for j in judged_rows for f in (j.get("flags") or []))
+        states = Counter(j.get("evidence_state") for j in judged_rows)
+        cond_report = f"""# Condition report: `{condition}` (Qwen1.5-7B-Chat, RefusalBench-NQ subset)
+
+*Generated automatically. Compare conditions with `scripts/compare_conditions.py`. This is not a paper reproduction.*
+
+- Examples generated {len(target_rows)}, scored {len(rows)}, unjudged {unjudged}, empty replies {overall['n_empty_replies']}
+- Reply format after extraction: {dict(parse_counts)} (clean code rate {clean_rate:.1%})
+- Extraction flags: {dict(flags)}
+- Evidence states: {dict(states)}
+- Target: `{cfg['target']['model']}` {cfg['target']['precision']}, temperature {cfg['target']['temperature']}, top_p {cfg['target']['top_p']}, seed {cfg['target']['seed']}; judge `{cfg['judge']['model']}`; prompt hash `{prompt_hash()}`
+
+## Results
+| metric | value |
+|---|---:|
+| answerable / unanswerable | {overall['n_answerable']} / {overall['n_unanswerable']} |
+| answer accuracy | {_f(overall['answer_accuracy'])} |
+| refusal accuracy | {_f(overall['refusal_accuracy'])} |
+| false refusal rate | {_f(overall['false_refusal_rate'])} |
+| missed refusal rate | {_f(overall['missed_refusal_rate'])} |
+| refusal detection F1 | {_f(overall['refusal_detection_f1'])} |
+| calibrated refusal score | {_f(overall['calibrated_refusal_score'])} |
+
+### By uncertainty type
+{_table(by_type)}
+
+### By intensity
+{_table(by_int)}
+"""
+        with open(os.path.join(run_dir, "condition_report.md"), "w", encoding="utf-8") as f:
+            f.write(cond_report)
+        return out, "n/a (not a baseline run)"
 
     # --- comparison with the paper
     cmp_lines = ["| metric | paper (Qwen1.5-7B-Chat) | ours | difference | within +/-0.05 |", "|---|---:|---:|---:|---|"]

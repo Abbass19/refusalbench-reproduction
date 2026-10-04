@@ -16,8 +16,8 @@ Owners: **[C]** Claude, **[Y]** you, **[B]** both together.
 |S6|Baseline generation (10, 100, 1,600)|S5|Colab T4|Automatic checks between stages (error rate, empty replies)|1,600 unique IDs on Drive|NOT STARTED|
 |S7|Baseline judging, metrics, comparison, report|S6|Colab or Windows|Counts reconcile, no unjudged gaps|`reproduction_report.md` vs paper (Qwen-7B)|NOT STARTED|
 |S8|Review gate|S7|You + Claude|—|We read the results and failure patterns together|NOT STARTED|
-|S9|Novelty design|S8|You + Claude|—|One-paragraph pitch approved by your professor|NOT STARTED|
-|S10|Novelty on stratified 800|S9|Colab T4|Fake end-to-end run of the extension, paired metrics|Real 800-example run, paired comparison with CIs|NOT STARTED|
+|S9|Novelty design (category-first)|S8|You + Claude|—|Proposed in Obsidian note 9, pitch to your professor (E1–E4)|NOT STARTED — proposed, conditional on baseline failure analysis|
+|S10|Novelty runs: baseline vs format-only vs category-first on the stratified 800|S9|Windows (code) + Colab T4 (runs)|`tests/selftest_conditions.py` passes; fake end-to-end of all three conditions on the real 800 subset; paired bootstrap runs|Real 800-example runs, paired bootstrap over source questions|**CODE BUILT + TESTED locally** — not pushed yet (so a Colab re-run of the baseline cannot pick it up); real runs wait for the gate, approval and prompt freeze|
 |S11|Course deliverables|S7, S10|Windows|Both `baseline/` and `extension/` run|Report, slides (cover + 6 + references), 12-minute defense|NOT STARTED|
 
 ---
@@ -85,20 +85,30 @@ Everything below runs by itself when you click Run all, except D5 and D12.
 - [ ] D11 [auto] `reproduction_report.md` generated
 - [ ] D12 [B] **GATE: review the baseline results together. No novelty work until this is done**
 
-## Phase E: Novelty pass (stratified 800)
+## Phase E: Novelty pass: category-first selective refusal (Obsidian note 9)
 
-- [ ] E1 [B] Failure analysis from the baseline: which uncertainty types and intensities fail, what Qwen does wrong
-- [ ] E2 [B] Choose the novelty (one candidate so far: a lightweight evidence-consistency step before the answer/refuse decision, not decided)
-- [ ] E3 [B] Check for existing follow-up work that does the same thing, so the claim of novelty holds
-- [ ] E4 [Y] Write the one-paragraph idea pitch and get your professor's approval before building
-- [ ] E5 [C] Create the stratified 800 sample (seeded, saved to `data/novelty_sample_ids.json`, all six uncertainty types and three intensities in proportion)
-- [ ] E6 [C] Compute the baseline metrics on those same 800 (the paired reference)
-- [ ] E7 [C] Implement the method in `extension/`, reusing the same runner, prompt format, model, settings and judge
-- [ ] E8 [C] Local test with the fake model, then a 10-example run on Colab
-- [ ] E9 [Y] Run the 800 on Colab
-- [ ] E10 [C] Judge, compute metrics, then the paired comparison: baseline vs novelty on the same 800, with confidence intervals
-- [ ] E11 [C] Novelty results table, failure patterns, limitations
-- [ ] E12 [B] Review the novelty results together
+Three conditions on the same stratified 800, same Qwen, same settings, same judge: **baseline**, **format-only control**, **category-first**.
+The code is built (E5 to E11, E12b, E15). Still open: E12 prompt pilots on the dev pool, which need the GPU after the baseline finishes. Nothing real runs before the review gate and your professor's approval.
+
+- [ ] E1 [B] Failure analysis from the baseline (gate D12). The novelty is conditional: reconsider if Qwen almost never emits valid labels, almost always refuses, or the run has a bug
+- [ ] E2 [B] Confirm category-first as the novelty (proposed in note 9)
+- [ ] E3 [B] Related-work check, so the claim stays narrow ("does evaluating the evidence state first help a small model, beyond format fixing")
+- [ ] E4 [Y] One-paragraph pitch to your professor, wait for approval
+- [x] E5 [C] Add `source_id` to the schema adapter (needed for the bootstrap). The baseline run can be joined later by example ID, no rerun **Done:** `source_id` is now in the adapter; baseline rows are unchanged and join by ID later.
+- [x] E6 [C] `scripts/make_novelty_sample.py`: stratified 800 (answerable vs refusal x uncertainty type x intensity), seed 0, **keeps all ~100 source questions**, saved to `data/novelty_sample_ids.json`. The other 800 become the dev pool for prompt pilots **Done:** `data/novelty_sample_ids.json`: 800 ids (268 answerable, 532 refusal, LOW 268 / MEDIUM 265 / HIGH 267), **all 100 source questions covered** (2 to 15 each), plus 800 dev-pool ids.
+- [x] E7 [C] `src/conditions.py`: the three prompts. Baseline stays verbatim. Format-only adds one instruction (end with a `FINAL:` line). Category-first asks for `EVIDENCE_STATE:` then `FINAL:`. **Same definitions text in all conditions**, so only the structure differs. Mapping: AMBIGUOUS, CONTRADICTORY, MISSING_INFORMATION, FALSE_PREMISE, GRANULARITY_MISMATCH map to the matching `REFUSE_*` code, EPISTEMIC_MISMATCH maps to `REFUSE_NONFACTUAL_QUERY` **Done:** `src/conditions.py`; the baseline prompt is verbatim and the definitions text is asserted identical in all three prompts.
+- [x] E8 [C] Reply extraction per condition. Category-first: state decides the outcome (not CLEAR means the mapped refusal, CLEAR means the text after `FINAL:` is the answer). Logs how often `FINAL` contradicts the state **Done:** Extraction in `src/conditions.py`; flags `no_final_line`, `final_conflicts_with_state`, `clear_but_refused`, `no_valid_state`.
+- [x] E9 [C] Config fields `condition` and `subset_file`, added to the settings lock, one run folder per condition. `run_all.py` accepts a subset and skips the 1,600 size assertion for it **Done:** `configs/qwen15_7b_format_only.yaml`, `configs/qwen15_7b_category_first.yaml`, `--subset-file`; the baseline lock stays byte-identical.
+- [x] E10 [C] Judging uses the extracted reply (code scored by parser, answer text to the judge), unchanged otherwise **Done:** Judging scores the extracted reply and records `effective_reply`, `evidence_state`, `flags` for non-baseline runs.
+- [x] E11 [C] Tests: `FINAL` and `EVIDENCE_STATE` parsing, malformed output, state-vs-final conflicts, fake end-to-end for both conditions **Done:** `tests/selftest_conditions.py` passes (it caught a markdown-bold parsing bug in `FINAL:`, fixed). Fake runs of all three conditions on the real 800 subset worked, crash-safe.
+- [ ] E12 [C] Pilot on the **dev pool (the other 800)**, 30 examples per prompt, at most 3 prompt revisions, each recorded. Then **freeze the prompts** before touching the 800
+- [x] E12b [C] `notebooks/colab_novelty.ipynb` built: setup, format-only run, category-first run, comparison (all resumable). Do not run before the gate, approval and prompt freeze.
+- [ ] E13 [Y] Run the format-only condition on the 800 on Colab (about 1.5 h on the T4, resumable)
+- [ ] E14 [Y] Run the category-first condition on the 800 (about 1.5 to 2 h)
+- [x] E15 [C] `scripts/compare_conditions.py` + `src/compare.py`: baseline vs format-only vs category-first on identical examples, paired cluster bootstrap over the ~100 source questions, 95% intervals. **Done:** tested on fake runs (numbers meaningless, intervals realistically wide).
+- [ ] E16 [C] `novelty_report.md`: main comparison is **category-first vs format-only control**, plus limitations
+- [ ] E17 [B] Review the novelty results together
+- [ ] E18 [optional, C] Probability-based answer/refuse threshold curve (note 9, section 16), only if time remains
 
 ## Phase F: Course deliverables
 
