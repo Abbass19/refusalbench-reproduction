@@ -124,6 +124,10 @@ def run_judging(target_rows, judge, judge_cfg, out_path, log=print, condition="b
     """Parse first; only unclear replies go to the judge. Returns stats. Stops cleanly on quota."""
     from .model_client import QuotaExhausted
 
+    import random as _random
+
+    target_rows = list(target_rows)
+    _random.Random(0).shuffle(target_rows)  # partial judging then covers a random sample, not the first IDs
     done = {r["example_id"] for r in read_jsonl(out_path)}
     prior_models = {r.get("judge_model") for r in read_jsonl(out_path) if r.get("source") == "judge"}
     if prior_models - {judge_cfg["model"]}:

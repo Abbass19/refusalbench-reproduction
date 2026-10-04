@@ -151,6 +151,8 @@ class GeminiJudge:
                 if getattr(e, "code", None) not in (429, 500, 502, 503, 504):
                     raise
                 last_err = e
+                if getattr(e, "code", None) == 429 and "PerDay" in str(e):
+                    raise QuotaExhausted(f"daily free-tier quota used up for {self.cfg['model']}: {str(e)[:400]}")
                 time.sleep(min(60, 2**attempt) + random.random())
         raise QuotaExhausted(f"judge gave up after {self.cfg['max_attempts']} attempts: {last_err}")
 

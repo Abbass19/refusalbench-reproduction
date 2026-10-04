@@ -146,6 +146,9 @@ def write_all(run_dir, cfg, target_rows, judged_rows, gen_history, judge_stats, 
                       "significant deviation on both reported metrics")
     else:
         assessment = "cannot be assessed (metrics missing, judging incomplete)"
+    if unjudged:
+        assessment = (f"INCOMPLETE: {unjudged} of {len(target_rows)} replies are not judged yet, so these numbers cover only "
+                      "part of the data and must not be interpreted or compared with the paper")
 
     # --- failure patterns (descriptive only)
     wrong = Counter((r["expected"], r["pred"]) for r in rows if not r["answerable"] and r["pred"] != r["expected"])
@@ -171,9 +174,13 @@ memory on their batch and they were never regenerated. They are excluded from ev
 """
     t = cfg["target"]
     j = cfg["judge"]
+    incomplete_banner = (f"> **INCOMPLETE JUDGING: {unjudged} of {len(target_rows)} replies are not judged yet. "
+                         "Do not interpret or compare these numbers.**\n") if unjudged else ""
     report = f"""# Reproduction report: Qwen1.5-7B-Chat on RefusalBench-NQ
 
 *Generated automatically. The assessment below is provisional until we review it together.*
+
+{incomplete_banner}
 
 ## Objective
 Reproduce, as closely as practical on free resources, the paper's evaluation of Qwen1.5-7B-Chat on the
