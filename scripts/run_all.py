@@ -33,6 +33,26 @@ from src.report import write_all  # noqa: E402
 from src.runner import now, prompt_hash, read_jsonl, run_generation, run_judging  # noqa: E402
 
 
+
+def load_target_checked(target_cfg, log):
+    """Refuse to load the model if something else already holds the GPU (for example an older run that is
+    still alive after a cell was stopped). Two copies of the model compete for memory and cause out-of-memory errors."""
+    try:
+        import torch
+
+        free, total = torch.cuda.mem_get_info()
+        used = int((total - free) / 2**20)
+        log(f"GPU memory in use before loading the model: {used} MiB of {int(total / 2**20)} MiB")
+        if used > 2000:
+            raise SystemExit(
+                f"STOPPED: {used} MiB of the GPU is already in use by another process (probably an older run that is "
+                "still alive). In Colab: Runtime > Disconnect and delete runtime, reconnect, and run again. "
+                "Progress on Drive is kept.")
+    except (ImportError, RuntimeError, AssertionError):
+        pass  # no GPU / no CUDA here (for example local tests), nothing to check
+    return make_target(target_cfg)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/qwen15_7b_baseline.yaml")
@@ -122,7 +142,7 @@ def main():
         todo = [i for i in ids if i not in have]
         if todo and client is None:
             log(f"loading the target model {cfg['target']['model']} ({cfg['target']['precision']}) ...")
-            client = make_target(cfg["target"])
+            client = load_target_checked(cfg["target"], log)
         log(f"--- {label}: {len(ids)} examples, {len(todo)} still to generate")
         stats = run_generation([by_id[i] for i in ids], client, out_path, err_path, cfg["target"], log,
                                prompt_fn=lambda e: build_prompt_for(condition, e))
@@ -153,7 +173,7 @@ def main():
             break
         log(f"--- catch-up pass {attempt}: {len(missing)} examples are still missing, retrying them")
         if client is None:
-            client = make_target(cfg["target"])
+            client = load_target_checked(cfg["target"], log)
         run_generation([by_id[i] for i in missing], client, out_path, err_path, cfg["target"], log,
                        prompt_fn=lambda e: build_prompt_for(condition, e))
 
